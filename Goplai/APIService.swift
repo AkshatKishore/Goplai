@@ -7,7 +7,7 @@
 import Foundation
 
 class APIService {
-    static let baseURL = "http://your-server:8000"
+    static let baseURL = "http://3.15.204.107:8000"
     
     // presigned URL
     static func getUploadURL(filename: String, completion: @escaping (Result<UploadResponse, Error>) -> Void) {

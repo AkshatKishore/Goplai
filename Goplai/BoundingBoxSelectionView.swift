@@ -6,12 +6,20 @@
 //
 
 import SwiftUI
+import AVFoundation
+import UIKit
 
 struct BoundingBoxSelectionView: View {
     @StateObject private var wsManager = WebSocketManager()
+    let videoURL: URL
     @State private var selectedBoxID: Int? = nil
     @State private var isLoading = false
     @State private var navigateToClips = false
+    @State private var reassignmentChecker = false
+    
+    @State private var progress: Double = 0
+    @State private var totalFrames: Int = 0
+    
     @Environment(\.dismiss) private var dismiss
     
     var sessionID: String
@@ -29,93 +37,138 @@ struct BoundingBoxSelectionView: View {
                         frameView
                         
                         NavigationLink(
-                            destination: ClipsView().navigationBarBackButtonHidden(true),
+                            destination: ClipsView(wsManager: wsManager, sessionID: sessionID, videoURL: videoURL).navigationBarBackButtonHidden(true),
                             isActive: $navigateToClips
                         ) {
                             EmptyView()
                         }
                     }
                     Spacer()
+                    
+                    ProgressView(value: progress, total: 1.0)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
                 }
                 .navigationTitle("Select Object")
-                .navigationBarItems(leading:
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "arrow.left")
-                            .font(.title2)
-                            .foregroundColor(.black)
-                    }
-                )
+//                .navigationBarItems(leading:
+//                    Button(action: { dismiss() }) {
+//                        Image(systemName: "arrow.left")
+//                            .font(.title2)
+//                            .foregroundColor(.black)
+//                    }
+//                )
                 .onAppear {
                     wsManager.connect(sessionID: sessionID)
+                    let asset = AVAsset(url: videoURL)
+                    let duration = asset.duration.seconds
+                    let fps = wsManager.fps ?? 30
+                    self.totalFrames = Int(duration * fps)
                 }
-                .onDisappear {
-                    wsManager.disconnect()
+//                .onDisappear {
+//                    wsManager.disconnect()
+//                }
+                .onChange(of: wsManager.currentFrameNum) { _ in
+                    isLoading = false // new frame
                 }
-                
-                if isLoading {
-                    ZStack {
-                        Color.black.opacity(0.4).ignoresSafeArea()
-                        VStack(spacing: 12) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            Text("Processing...")
-                                .foregroundColor(.white)
-                                .font(.headline)
-                        }
-                        .padding(20)
-                        .background(Color.black.opacity(0.6))
-                        .cornerRadius(10)
+                .onChange(of: wsManager.isCompleted) { done in
+                    if done {
+                        isLoading = false
+                        navigateToClips = true
+                        progress = 1.0
                     }
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.2), value: isLoading)
                 }
+                .onChange(of: wsManager.progress){
+                    self.progress = wsManager.progress / Double(totalFrames)
+                }
+//                if isLoading {
+//                    ZStack {
+//                        Color.black.opacity(0.4).ignoresSafeArea()
+//                        VStack(spacing: 12) {
+//                            ProgressView()
+//                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+//                            Text("Processing...")
+//                                .foregroundColor(.white)
+//                                .font(.headline)
+//                        }
+//                        .padding(20)
+//                        .background(Color.black.opacity(0.6))
+//                        .cornerRadius(10)
+//                    }
+//                    .transition(.opacity)
+//                    .animation(.easeInOut(duration: 0.2), value: isLoading)
+//                }
             }
         }
     }
     
-    // Frame + Bounding Boxes
+    // MARK: - Frame + Bounding Boxes
     private var frameView: some View {
         Group {
-            if let frameURL = wsManager.frameURL, let url = URL(string: frameURL) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFit().overlay(boundingBoxesOverlay)
-                } placeholder: {
-                    ProgressView().padding()
-                }
-            } else if let base64 = wsManager.frameBase64,
-                      let data = Data(base64Encoded: base64),
-                      let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
+            if isLoading {
+                // while waiting for the backend to send a new frame
+                ProgressView("Waiting for frame...").padding()
+            } else if let frameNum = wsManager.currentFrameNum,
+                      let image = extractFrame(from: videoURL,
+                                               at: frameNum,
+                                               fps: wsManager.fps ?? 30) {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
                     .overlay(boundingBoxesOverlay)
             } else {
-                ProgressView().padding()
+                // initial load before first frame
+                ProgressView("Waiting for frame...").padding()
             }
         }
     }
+
     
     private var boundingBoxesOverlay: some View {
         GeometryReader { geo in
-            ForEach(wsManager.players) { player in
-                Rectangle()
-                    .stroke(selectedBoxID == player.id ? Color.blue : Color.red, lineWidth: 2)
-                    .frame(width: player.rect.width, height: player.rect.height)
-                    .position(x: player.rect.midX, y: player.rect.midY)
-                    .onTapGesture {
-                        selectedBoxID = player.id
-                        isLoading = true
-                        wsManager.sendSelection(playerID: player.id)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            isLoading = false
-                            navigateToClips = true
+            if let frameNum = wsManager.currentFrameNum,
+               let frameImage = extractFrame(from: videoURL,
+                                             at: frameNum,
+                                             fps: wsManager.fps ?? 30) {
+                
+                let imgSize = frameImage.size
+                let scaleX = geo.size.width / imgSize.width
+                let scaleY = geo.size.height / imgSize.height
+                
+                ForEach(wsManager.players) { player in
+                    Rectangle()
+                        .stroke(selectedBoxID == player.id ? Color.blue : Color.red, lineWidth: 2)
+                        .frame(width: player.rect.width * scaleX, height: player.rect.height * scaleY)
+                        .position(x: player.rect.midX * scaleX, y: player.rect.midY * scaleY)
+                        .onTapGesture {
+                            selectedBoxID = player.id
+                            isLoading = true
+                            if wsManager.requiresReassignment {
+                                wsManager.sendReassignmentSelection(playerID: player.id)
+                            } else {
+                                wsManager.sendSelection(playerID: player.id)
+                            }
                         }
-                    }
+                }
             }
         }
     }
 }
 
-#Preview {
-    BoundingBoxSelectionView(sessionID: "preview-session-id")
+
+// MARK: - Frame Extraction
+func extractFrame(from videoURL: URL, at frameNum: Int, fps: Double) -> UIImage? {
+    let asset = AVAsset(url: videoURL)
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    
+    let time = CMTime(value: CMTimeValue(frameNum), timescale: CMTimeScale(fps))
+    
+    do {
+        let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+        return UIImage(cgImage: cgImage)
+    } catch {
+        print("❌ Frame extraction failed: \(error)")
+        return nil
+    }
 }

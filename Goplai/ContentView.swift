@@ -21,6 +21,7 @@ struct ContentView: View {
                 if let selectedVideoURL = selectedVideoURL {
                     VideoPlayer(player: AVPlayer(url: selectedVideoURL))
                         .frame(height: 200)
+                        .padding()
                         .cornerRadius(10)
                         .shadow(radius: 4)
                 } else {
@@ -56,7 +57,7 @@ struct ContentView: View {
                         APIService.getUploadURL(filename: filename) { result in
                             switch result {
                             case .success(let uploadResponse):
-                                print("✅ Got upload URL for session: \(uploadResponse.session_id)")
+                                print("Got upload URL for session: \(uploadResponse.session_id)")
                                 
                                 APIService.uploadToS3(uploadResponse: uploadResponse, videoURL: videoURL) { success in
                                     if success {
@@ -100,7 +101,7 @@ struct ContentView: View {
                     isActive: $navigateToProcessedFrame,
                     destination: {
                         if let sessionID = sessionID {
-                            BoundingBoxSelectionView(sessionID: sessionID)
+                            BoundingBoxSelectionView(videoURL: selectedVideoURL!, sessionID: sessionID)
                                 .navigationBarBackButtonHidden(true)
                         } else {
                             EmptyView()
