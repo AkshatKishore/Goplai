@@ -51,13 +51,13 @@ struct BoundingBoxSelectionView: View {
                         .padding(.bottom, 8)
                 }
                 .navigationTitle("Select Object")
-//                .navigationBarItems(leading:
-//                    Button(action: { dismiss() }) {
-//                        Image(systemName: "arrow.left")
-//                            .font(.title2)
-//                            .foregroundColor(.black)
-//                    }
-//                )
+                //.navigationBarItems(leading:
+                //    Button(action: { dismiss() }) {
+                //        Image(systemName: "arrow.left")
+                //            .font(.title2)
+                //            .foregroundColor(.black)
+                //    }
+                //)
                 .onAppear {
                     wsManager.connect(sessionID: sessionID)
                     let asset = AVAsset(url: videoURL)
@@ -65,9 +65,6 @@ struct BoundingBoxSelectionView: View {
                     let fps = wsManager.fps ?? 30
                     self.totalFrames = Int(duration * fps)
                 }
-//                .onDisappear {
-//                    wsManager.disconnect()
-//                }
                 .onChange(of: wsManager.currentFrameNum) { _ in
                     isLoading = false // new frame
                 }
@@ -81,6 +78,7 @@ struct BoundingBoxSelectionView: View {
                 .onChange(of: wsManager.progress){
                     self.progress = wsManager.progress / Double(totalFrames)
                 }
+//                MARK: the code below allows for a different type of progressview()
 //                if isLoading {
 //                    ZStack {
 //                        Color.black.opacity(0.4).ignoresSafeArea()
@@ -102,7 +100,7 @@ struct BoundingBoxSelectionView: View {
         }
     }
     
-    // MARK: - Frame + Bounding Boxes
+    // MARK: frame + bounding Boxes
     private var frameView: some View {
         Group {
             if isLoading {
@@ -156,7 +154,6 @@ struct BoundingBoxSelectionView: View {
 }
 
 
-// MARK: - Frame Extraction
 func extractFrame(from videoURL: URL, at frameNum: Int, fps: Double) -> UIImage? {
     let asset = AVAsset(url: videoURL)
     let generator = AVAssetImageGenerator(asset: asset)
@@ -168,7 +165,7 @@ func extractFrame(from videoURL: URL, at frameNum: Int, fps: Double) -> UIImage?
         let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
         return UIImage(cgImage: cgImage)
     } catch {
-        print("❌ Frame extraction failed: \(error)")
+        print("Frame extraction failed: \(error)")
         return nil
     }
 }

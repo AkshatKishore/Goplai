@@ -25,11 +25,11 @@ private struct ClipCard: View {
 //                .font(.subheadline)
 //                .foregroundColor(.secondary)
 
-            //TODO: uncomment below to allow for download functionality. Currently has a bug
-//            Button { onSave(clip.url) } label: {
-//                Label("Save", systemImage: "arrow.down.circle")
-//                    .font(.subheadline)
-//            }
+            //download functionality. currently untested
+            Button { onSave(clip.url) } label: {
+                Label("Save", systemImage: "arrow.down.circle")
+                    .font(.subheadline)
+            }
         }
         .frame(width: 200)
     }
@@ -80,14 +80,14 @@ struct ClipsView: View {
         NavigationView {
             content
                 .navigationTitle("Result Clips")
-            //TODO: uncomment below to get a back button
-//                .toolbar {
-//                    ToolbarItem(placement: .topBarLeading) {
-//                        Button(action: { dismiss() }) {
-//                            Image(systemName: "arrow.left")
-//                        }
-//                    }
-//                }
+                //TODO: uncomment below to get a back button - not needed for this screen
+                //.toolbar {
+                //    ToolbarItem(placement: .topBarLeading) {
+                //        Button(action: { dismiss() }) {
+                //            Image(systemName: "arrow.left")
+                //        }
+                //    }
+                //}
                 .onDisappear {
                     wsManager.disconnect()
                 }
@@ -106,7 +106,7 @@ struct ClipsView: View {
     @ViewBuilder
     private var content: some View {
         if highlightClips.isEmpty {
-            Text("No Highlights Found for Selected Player")
+            Text("Waiting for Highlights...")
                 .foregroundColor(.secondary)
                 .padding()
         } else {
@@ -136,9 +136,22 @@ struct ClipsView: View {
                         }
                         return
                     }
+
+                    let fileManager = FileManager.default
+                    let destinationURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+                    do {
+                        try fileManager.moveItem(at: tempURL, to: destinationURL)
+                    } catch {
+                        DispatchQueue.main.async {
+                            downloadMessage = "File handling failed."
+                            showAlert = true
+                        }
+                        return
+                    }
+
                     PHPhotoLibrary.shared().performChanges({
-                        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: tempURL)
-                    }) { success, _ in
+                        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: destinationURL)
+                    }) { success, error in
                         DispatchQueue.main.async {
                             downloadMessage = success ? "Video saved to Photos." : "Failed to save video."
                             showAlert = true
@@ -155,7 +168,7 @@ struct ClipsView: View {
         }
     }
 
-    // Slice the original video into highlight clips using start/end times from wsManager.highlights
+
     private func generateHighlightClips() {
         //highlightClips.removeAll()
 
@@ -179,6 +192,7 @@ struct ClipsView: View {
 }
 
 
+//MARK: The code below has been broken down into pieces in the code above, due to the compiler error of not being able to type check the view in set time.
 
 //import SwiftUI
 //import AVKit
